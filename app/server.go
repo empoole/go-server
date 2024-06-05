@@ -45,18 +45,29 @@ func handleConnection(conn net.Conn) {
 	request := new(httpRequest)
 	request.parseRequest(string(buffer))
 
+	response := ""
+
 	if(request.path == "/") {
-		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
-	} else if (request.path[0:6] == "/echo/") {
-		echo := request.path[6:]
-		response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(echo), echo)
-		conn.Write([]byte(response))
+		response = "HTTP/1.1 200 OK\r\n\r\n"
+	} else if (strings.Contains(request.path, "/echo/")) {
+		echo := strings.TrimPrefix(request.path, "/echo/")
+		response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(echo), echo)
 	} else if (request.path == "/user-agent") {
-		response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(request.Headers["User-Agent"]), request.Headers["User-Agent"])
-		conn.Write(([]byte(response)))
+		response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(request.Headers["User-Agent"]), request.Headers["User-Agent"])
+	} else if (strings.Contains(request.path, "/files/")) {
+		dir := os.Args[2]
+		fileName := strings.TrimPrefix(request.path, "/files/")
+		data, err := os.ReadFile(dir + fileName)
+		if err != nil {
+			response = "HTTP/1.1 404 Not Found\r\n\r\n"
+		} else {
+			response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(data), data)
+		}
 	} else {
-		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		response = "HTTP/1.1 404 Not Found\r\n\r\n"
 	}
+
+	conn.Write(([]byte(response)))
 }
 
 func (req *httpRequest) parseRequest(requestString string) *httpRequest {
