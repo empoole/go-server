@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"net"
 	"os"
@@ -57,6 +58,9 @@ func handleConnection(conn net.Conn) {
 		response = buildResponse(200, encoding, "", "")
 	} else if (strings.Contains(request.path, "/echo/")) {
 		echo := strings.TrimPrefix(request.path, "/echo/")
+		if(encoding == "gzip") {
+			echo = gzipString(echo)
+		}
 		response = buildResponse(200, encoding, "text/plain", echo)
 	} else if (request.path == "/user-agent") {
 		response = buildResponse(200, encoding, "text/plain", request.Headers["user-agent"])
@@ -103,6 +107,20 @@ func (req *httpRequest) parseRequest(requestString string) *httpRequest {
 	}
 
 	return req
+}
+
+func gzipString(data string) string {
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	if _, err := gz.Write([]byte(data)); err != nil {
+		fmt.Println("Error encoding request body: ", err.Error())
+		os.Exit(1)
+	}
+	if err := gz.Close(); err != nil {
+		fmt.Println("Error closing gzip writer: ", err.Error())
+		os.Exit(1)
+	}
+	return string(b.Bytes())
 }
 
 func buildResponse(code int, encoding string, contentType string, content string) string {
