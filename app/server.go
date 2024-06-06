@@ -48,21 +48,26 @@ func handleConnection(conn net.Conn) {
 
 	response := ""
 
+	encoding := ""
+	if (request.Headers["accept-encoding"] == "gzip") {
+		encoding = "gzip"
+	}
+
 	if(request.path == "/") {
-		response = "HTTP/1.1 200 OK\r\n\r\n"
+		response = buildResponse(200, encoding, "", "")
 	} else if (strings.Contains(request.path, "/echo/")) {
 		echo := strings.TrimPrefix(request.path, "/echo/")
-		response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(echo), echo)
+		response = buildResponse(200, encoding, "text/plain", echo)
 	} else if (request.path == "/user-agent") {
-		response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(request.Headers["User-Agent"]), request.Headers["User-Agent"])
+		response = buildResponse(200, encoding, "text/plain", request.Headers["user-agent"])
 	} else if (strings.Contains(request.path, "/files/") && request.method == "GET") {
 		dir := os.Args[2]
 		fileName := strings.TrimPrefix(request.path, "/files/")
 		data, err := os.ReadFile(dir + fileName)
 		if err != nil {
-			response = "HTTP/1.1 404 Not Found\r\n\r\n"
+			response = buildResponse(404, encoding, "", "")
 		} else {
-			response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(data), data)
+			response = buildResponse(200, encoding, "application/octet-stream", string(data))
 		}
 	} else if (strings.Contains(request.path, "/files/") && request.method == "POST") {
 		dir := os.Args[2]
@@ -70,12 +75,12 @@ func handleConnection(conn net.Conn) {
 		contents := bytes.Trim([]byte(request.Body), "\x00")
 		err := os.WriteFile(dir + fileName, contents, 0644)
 		if err != nil {
-			response = "HTTP/1.1 404 Not Found\r\n\r\n"
+			response = buildResponse(404, encoding, "", "")
 		} else {
-			response = "HTTP/1.1 201 Created\r\n\r\n"
+			response = buildResponse(201, encoding, "", "")
 		}
 	} else {
-		response = "HTTP/1.1 404 Not Found\r\n\r\n"
+		response = buildResponse(404, encoding, "", "")
 	}
 
 	conn.Write(([]byte(response)))
@@ -94,8 +99,38 @@ func (req *httpRequest) parseRequest(requestString string) *httpRequest {
 			break
 		}
 		header := strings.Split(requestParts[i], ": ")
-		req.Headers[header[0]] = header[1]
+		req.Headers[strings.ToLower(header[0])] = header[1]
 	}
 
 	return req
+}
+
+func buildResponse(code int, encoding string, contentType string, content string) string {
+	responseCodes := map[int]string{
+		200: "OK",
+		201: "Created",
+		404: "Not Found",
+	}
+
+	responseString := "HTTP/1.1 "
+	responseString += fmt.Sprintf("%d %s", code, responseCodes[code])
+	responseString += "\r\n"
+	if(encoding != "") {
+		responseString += "Content-Encoding: " + encoding
+		responseString += "\r\n"
+	}
+	if (contentType != "") {
+		responseString += "Content-Type: " + contentType
+		responseString += "\r\n"
+	}
+	if (content != "") {
+		responseString += fmt.Sprintf("Content-Length: %d", len(content))
+		responseString += "\r\n"
+	}
+	responseString += "\r\n"
+	if (content != "") {
+		responseString += content
+	}
+
+	return responseString
 }
