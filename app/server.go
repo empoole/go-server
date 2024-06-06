@@ -49,42 +49,18 @@ func handleConnection(conn net.Conn) {
 
 	response := ""
 
-	encoding := ""
-	if (strings.Contains(request.Headers["accept-encoding"], "gzip")) {
-		encoding = "gzip"
-	}
-
 	if(request.path == "/") {
-		response = buildResponse(200, encoding, "", "")
+		response = buildResponse(200, request.getEncoding(), "", "")
 	} else if (strings.Contains(request.path, "/echo/")) {
-		echo := strings.TrimPrefix(request.path, "/echo/")
-		if(encoding == "gzip") {
-			echo = gzipString(echo)
-		}
-		response = buildResponse(200, encoding, "text/plain", echo)
+		response = handleEcho(request)
 	} else if (request.path == "/user-agent") {
-		response = buildResponse(200, encoding, "text/plain", request.Headers["user-agent"])
+		response = buildResponse(200, request.getEncoding(), "text/plain", request.Headers["user-agent"])
 	} else if (strings.Contains(request.path, "/files/") && request.method == "GET") {
-		dir := os.Args[2]
-		fileName := strings.TrimPrefix(request.path, "/files/")
-		data, err := os.ReadFile(dir + fileName)
-		if err != nil {
-			response = buildResponse(404, encoding, "", "")
-		} else {
-			response = buildResponse(200, encoding, "application/octet-stream", string(data))
-		}
+		response = handleGetFile(request)
 	} else if (strings.Contains(request.path, "/files/") && request.method == "POST") {
-		dir := os.Args[2]
-		fileName := strings.TrimPrefix(request.path, "/files/")
-		contents := bytes.Trim([]byte(request.Body), "\x00")
-		err := os.WriteFile(dir + fileName, contents, 0644)
-		if err != nil {
-			response = buildResponse(404, encoding, "", "")
-		} else {
-			response = buildResponse(201, encoding, "", "")
-		}
+		response = handlePostFile(request)
 	} else {
-		response = buildResponse(404, encoding, "", "")
+		response = buildResponse(404, request.getEncoding(), "", "")
 	}
 
 	conn.Write(([]byte(response)))
@@ -109,6 +85,15 @@ func (req *httpRequest) parseRequest(requestString string) *httpRequest {
 	return req
 }
 
+func (request *httpRequest) getEncoding() string {
+	encoding := ""
+	// This project currently only accepts gzip encoding
+	if (strings.Contains(request.Headers["accept-encoding"], "gzip")) {
+		encoding = "gzip"
+	}
+	return encoding
+}
+
 func gzipString(data string) string {
 	var b bytes.Buffer
 	gz := gzip.NewWriter(&b)
@@ -121,6 +106,44 @@ func gzipString(data string) string {
 		os.Exit(1)
 	}
 	return string(b.Bytes())
+}
+
+func handleEcho(request *httpRequest) string {
+	echo := strings.TrimPrefix(request.path, "/echo/")
+	encoding := request.getEncoding()
+	if(encoding == "gzip") {
+		echo = gzipString(echo)
+	}
+	return buildResponse(200, encoding, "text/plain", echo)
+}
+
+func handleGetFile(request *httpRequest) string {
+	dir := os.Args[2]
+	fileName := strings.TrimPrefix(request.path, "/files/")
+	encoding := request.getEncoding()
+	data, err := os.ReadFile(dir + fileName)
+	response := ""
+	if err != nil {
+		response = buildResponse(404, encoding, "", "")
+	} else {
+		response = buildResponse(200, encoding, "application/octet-stream", string(data))
+	}
+	return response
+}
+
+func handlePostFile(request *httpRequest) string {
+	dir := os.Args[2]
+	fileName := strings.TrimPrefix(request.path, "/files/")
+	contents := bytes.Trim([]byte(request.Body), "\x00")
+	err := os.WriteFile(dir + fileName, contents, 0644)
+	encoding := request.getEncoding()
+	response := ""
+	if err != nil {
+		response = buildResponse(404, encoding, "", "")
+	} else {
+		response = buildResponse(201, encoding, "", "")
+	}
+	return response
 }
 
 func buildResponse(code int, encoding string, contentType string, content string) string {
