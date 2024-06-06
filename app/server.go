@@ -49,7 +49,7 @@ func handleConnection(conn net.Conn) {
 	response := ""
 
 	encoding := ""
-	if (request.Headers["accept-encoding"] == "gzip") {
+	if (strings.Contains(request.Headers["accept-encoding"], "gzip")) {
 		encoding = "gzip"
 	}
 
